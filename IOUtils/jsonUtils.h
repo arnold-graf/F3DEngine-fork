@@ -120,16 +120,56 @@ inline void from_json(const json& j, Billboard& val) {
     // std::cout << std::format("billboard texture: {}", val.textureFile) << std::endl;
 }
 
+// --- Light ---
+
+inline void to_json(json& j, const Light& val) {
+    j = {
+        {"color", json::array({val.color.r, val.color.g, val.color.b, val.color.a})},
+        {"position", val.position},
+        {"zElevation", val.zElevation},
+        {"radiance", val.radiance},
+        {"pitch", val.pitch},
+        {"yaw", val.yaw},
+        {"halfFOVH", val.halfFOVH},
+        {"halfFOVV", val.halfFOVV},
+        {"isON", val.isON},
+        {"flicker", val.flicker}
+    };
+}
+
+inline void from_json(const json& j, Light& val) {
+    auto color = j.at("color");
+    val.color.r = color.at(0).get<double>();
+    val.color.g = color.at(1).get<double>();
+    val.color.b = color.at(2).get<double>();
+    val.color.a = color.size() > 3 ? color.at(3).get<double>() : 1.0;
+    j.at("position").get_to(val.position);
+    j.at("zElevation").get_to(val.zElevation);
+    j.at("radiance").get_to(val.radiance);
+    if (j.contains("pitch")) j.at("pitch").get_to(val.pitch);
+    if (j.contains("yaw")) j.at("yaw").get_to(val.yaw);
+    if (j.contains("halfFOVH")) j.at("halfFOVH").get_to(val.halfFOVH);
+    if (j.contains("halfFOVV")) j.at("halfFOVV").get_to(val.halfFOVV);
+    if (j.contains("isON")) j.at("isON").get_to(val.isON);
+    if (j.contains("flicker")) j.at("flicker").get_to(val.flicker);
+    val.cuttoffMinH = val.yaw - val.halfFOVH + pi;
+    val.cuttoffMaxH = val.yaw + val.halfFOVH + pi;
+    val.cuttoffminV = val.pitch - val.halfFOVV + pi;
+    val.cuttoffMaxV = val.pitch + val.halfFOVV + pi;
+}
+
 // --- Level ---
 
 inline void to_json(json& j, const Level& val) {
     j = {
         {"sectorList", val.sectorList},
-        {"billboardList", val.billboardList}
+        {"billboardList", val.billboardList},
+        {"lightList", val.lightList}
     };
 }
 
 inline void from_json(const json& j, Level& val) {
     j.at("sectorList").get_to(val.sectorList);
     j.at("billboardList").get_to(val.billboardList);
+    if (j.contains("lightList")) j.at("lightList").get_to(val.lightList);
 }

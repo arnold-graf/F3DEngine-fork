@@ -9,6 +9,7 @@
 
 #include "sector.h"
 #include "billboard.h"
+#include "light.h"
 
 using namespace vecSys;
 using std::vector;
@@ -26,6 +27,7 @@ struct Level {
 
     vector<Sector> sectorList;
     vector<Billboard> billboardList;
+    vector<Light> lightList;
     vector<CastingPackage> sectorPack;
     vector<CastingPackage> billboardPack;
 

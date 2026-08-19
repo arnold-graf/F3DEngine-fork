@@ -1,10 +1,16 @@
 #pragma once
 
-#include "globals.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <vector>
+
+#include "vecSys/base.h"
 #include "vecSys/vec2.h"
 #include "vecSys/vec3.h"
 #include "vecSys/vecRGBA.h"
 
+using namespace vecSys;
 
 struct Light {
     vecRGBA color = {0.5, 0.5, 0.5, 1.0};
@@ -15,6 +21,19 @@ struct Light {
     double halfFOVH = pi, halfFOVV = pi;
     double cuttoffMinH = 0, cuttoffMaxH = 2*pi, cuttoffminV = 0, cuttoffMaxV = 2*pi;
     bool isON = true, flicker = false;
+    double flickerIntensity = 1.0;
+    double flickerTarget = 1.0;
+
+    void updateFrame() {
+        if (!flicker) {
+            flickerIntensity = 1.0;
+            flickerTarget = 1.0;
+            return;
+        }
+        flickerTarget += (((double)rand() / RAND_MAX) - 0.5) * 0.06;
+        flickerTarget = std::clamp(flickerTarget, 0.88, 1.12);
+        flickerIntensity += (flickerTarget - flickerIntensity) * 0.12;
+    }
 
     bool illuminated(const vec2& obj, const double& objElevation) const {
         vec2 toSource = obj - position;
@@ -36,15 +55,12 @@ struct Light {
         radiance += (target - radiance) * rate;
     }
 
-    vecRGBA lightUp(const vec2& obj, const double& objElevation, float flickerVariance = 0.05f) const {
+    vecRGBA lightUp(const vec2& obj, const double& objElevation) const {
         vec2 toSource = obj - position;
         double zDiff = objElevation - zElevation;
-        double distance = std::sqrt(toSource.x*toSource.x + toSource.y*toSource.y + zDiff*zDiff);
-        if (flicker) {
-            double flickerAmmount = (((double)rand() / RAND_MAX ) - 0.5) * flickerVariance;
-            return color * flickerAmmount / std::clamp((distance*distance)/radiance, 0.0, 1.0);
-        }
-        return color / std::clamp((distance*distance)/radiance, 0.0, 1.0);
+        double distanceSq = toSource.x * toSource.x + toSource.y * toSource.y + zDiff * zDiff;
+        double falloff = 1.0 / (1.0 + distanceSq / radiance);
+        return color * (flickerIntensity * falloff);
     }
 
     void complexOrbit(const vec3& orbitPoint, const vec3& axis, const double& rads) {
@@ -68,4 +84,28 @@ struct Light {
         cuttoffMaxV = pitch + halfFOVV + pi;
     }
 };
+
+inline void updateLevelLights(std::vector<Light>& lights) {
+    for (Light& light : lights) {
+        light.updateFrame();
+    }
+}
+
+// Sum ambient + all active lights at a world-space point.
+inline vecRGBA computeLighting(const vec2& worldPos, double elevation,
+                               const std::vector<Light>& lights, double ambient = 0.12) {
+    vecRGBA result(ambient, ambient, ambient, 1.0);
+    for (const Light& light : lights) {
+        if (!light.isON) continue;
+        if (!light.illuminated(worldPos, elevation)) continue;
+        result = result + light.lightUp(worldPos, elevation);
+    }
+    return result.clamped(vecRGBA(0.0, 0.0, 0.0, 0.0), vecRGBA(4.0, 4.0, 4.0, 1.0));
+}
+
+inline vecRGBA applyLighting(const vecRGBA& baseColor, double distanceBrightness,
+                             const vec2& worldPos, double elevation,
+                             const std::vector<Light>& lights) {
+    return (baseColor * distanceBrightness * computeLighting(worldPos, elevation, lights)).clamped();
+}
 

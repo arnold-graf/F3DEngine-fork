@@ -35,14 +35,14 @@ void onReshape(int width, int height) {
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+
+    RayCast::ensureFramebuffer();
 }
 
 
 void display(SDL_Window* window) {
-    glClear(GL_COLOR_BUFFER_BIT);
-
     if (currentGameState == GAMESTATES::TITLE_SCREEN) {
-        // Title logic
+        glClear(GL_COLOR_BUFFER_BIT);
     }
     else if (currentGameState == GAMESTATES::GAME_PLAY || currentGameState == GAMESTATES::MENU_OPEN || currentGameState == GAMESTATES::PAUSED) {
         if (currentGameState == GAMESTATES::GAME_PLAY) {
@@ -56,11 +56,14 @@ void display(SDL_Window* window) {
             }
         }
 
+        updateLevelLights(lvl.lightList);
+        glClear(GL_COLOR_BUFFER_BIT);
         RayCast::drawBaseWorld();
         RayCast::rayCast();
+        RayCast::presentFramebuffer();
     }
 
-    SDL_GL_SwapWindow(window);  // replaces glutSwapBuffers
+    SDL_GL_SwapWindow(window);
 }
 
 

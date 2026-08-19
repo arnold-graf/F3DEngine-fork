@@ -1,0 +1,5 @@
+f3dengine
+main.exe
+*.o
+.DS_Store
+build/

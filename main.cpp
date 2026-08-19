@@ -4,7 +4,51 @@
 #include "glCallBacks.h"
 #include "IOUtils/saveAndLoad.h"
 
+namespace {
+    bool writeSnapshotBmp(const std::string& path) {
+        if (RayCast::frameBuffer.width <= 0 || RayCast::frameBuffer.height <= 0) {
+            std::cerr << "snapshot: framebuffer not initialized\n";
+            return false;
+        }
+        try {
+            RayCast::frameBuffer.writeToBMP(path);
+            return true;
+        } catch (const std::exception& ex) {
+            std::cerr << "snapshot: " << ex.what() << "\n";
+            return false;
+        }
+    }
+
+    int runSnapshot(const std::string& outputPath) {
+        windowWidth = 1024;
+        windowHeight = 576;
+        halfWindowWidth = windowWidth / 2;
+        halfWindowHeight = windowHeight / 2;
+        numRays = windowWidth / 4;
+        veritcalRays = (windowWidth / 16) * 9;
+
+        loadTextures("./gameDef/textures.json");
+        lvl = loadLevelFromFile("./gameDef/savedLevel.json");
+        lvl.update();
+        updateLevelLights(lvl.lightList);
+
+        RayCast::drawBaseWorld();
+        RayCast::rayCast();
+
+        if (!writeSnapshotBmp(outputPath)) {
+            return 1;
+        }
+
+        std::cout << "Wrote snapshot: " << outputPath << "\n";
+        return 0;
+    }
+}
+
 int main(int argc, char* argv[]) {
+    if (argc >= 3 && std::string(argv[1]) == "--snapshot") {
+        return runSnapshot(argv[2]);
+    }
+
     // --- Game setup ---
     loadTextures("./gameDef/textures.json");
     lvl = loadLevelFromFile("./gameDef/savedLevel.json");

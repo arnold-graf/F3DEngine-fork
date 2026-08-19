@@ -445,5 +445,15 @@
                 }
             ]
         }
+    ],
+    "lightList": [
+        {
+            "color": [1.0, 0.65, 0.25, 1.0],
+            "position": {"x": 360.0, "y": 360.0},
+            "zElevation": 80.0,
+            "radiance": 80000.0,
+            "isON": true,
+            "flicker": true
+        }
     ]
 }
