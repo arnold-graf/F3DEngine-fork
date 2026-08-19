@@ -32,3 +32,27 @@ make
 make run          # interactive window
 ./scripts/render_snapshot.sh   # headless PNG verification
 ```
+
+## Performance overlay
+
+The in-game overlay (bottom-right) shows:
+
+- **FPS** — smoothed frames per second
+- **frm** — frame time in milliseconds
+- **CPU** — process CPU usage (can exceed 100% on multi-core; uses `getrusage`)
+- **cor** — CPU % per hardware thread (better for comparing efficiency across machines)
+- **cap** — FPS cap state (default 120)
+
+Controls:
+
+- **F** — toggle FPS cap on/off
+- **0** — toggle overlay visibility (hidden by default)
+
+CLI:
+
+```bash
+./f3dengine --fps-cap 120    # default
+./f3dengine --no-fps-cap     # uncapped
+```
+
+Wattage is not available in-app without elevated privileges. On macOS use `sudo ./scripts/measure_power.sh 10` while the game runs. For external CPU sampling use `./scripts/measure_cpu.sh 10`.

@@ -3,6 +3,7 @@
 #include "globals.h"
 #include "rayCast.h"
 #include "keyHandler.h"
+#include "perfOverlay.h"
 
 void onReshape(int width, int height) {
     int targetWidth = width;
@@ -60,6 +61,7 @@ void display(SDL_Window* window) {
         glClear(GL_COLOR_BUFFER_BIT);
         RayCast::drawBaseWorld();
         RayCast::rayCast();
+        perfMonitor.draw(RayCast::frameBuffer);
         RayCast::presentFramebuffer();
     }
 
@@ -68,6 +70,30 @@ void display(SDL_Window* window) {
 
 
 bool captureMouse = true, firstMouse = true;
+
+void releaseMouse() {
+    captureMouse = false;
+    firstMouse = true;
+    SDL_ShowCursor(SDL_ENABLE);
+}
+
+void acquireMouse(SDL_Window* window) {
+    captureMouse = true;
+    firstMouse = true;
+    if (currentGameState == GAMESTATES::MENU_OPEN) {
+        currentGameState = GAMESTATES::GAME_PLAY;
+    }
+    SDL_ShowCursor(SDL_DISABLE);
+    SDL_WarpMouseInWindow(window, halfWindowWidth, halfWindowHeight);
+}
+
+void mouseButtonDown(SDL_Window* window) {
+    if (!captureMouse && (currentGameState == GAMESTATES::GAME_PLAY
+            || currentGameState == GAMESTATES::MENU_OPEN
+            || currentGameState == GAMESTATES::PAUSED)) {
+        acquireMouse(window);
+    }
+}
 
 void mouseMotion(int x, int y, SDL_Window* window) {
     if (currentGameState == GAMESTATES::GAME_PLAY || currentGameState == GAMESTATES::MENU_OPEN || currentGameState == GAMESTATES::PAUSED) {
@@ -107,14 +133,10 @@ void keyDown(SDL_Keycode key, SDL_Window* window) {
             keyFlags['i'] = !keyFlags['i'];
             if (currentGameState == GAMESTATES::GAME_PLAY || currentGameState == GAMESTATES::MENU_OPEN) {
                 if (currentGameState == GAMESTATES::GAME_PLAY) {
-                    captureMouse = false;
+                    releaseMouse();
                     currentGameState = GAMESTATES::MENU_OPEN;
-                    SDL_ShowCursor(SDL_ENABLE);
                 } else {
-                    captureMouse = true;
-                    currentGameState = GAMESTATES::GAME_PLAY;
-                    SDL_ShowCursor(SDL_DISABLE);
-                    SDL_WarpMouseInWindow(window, halfWindowWidth, halfWindowHeight);
+                    acquireMouse(window);
                 }
             }
             break;
@@ -125,10 +147,19 @@ void keyDown(SDL_Keycode key, SDL_Window* window) {
         case SDLK_d: keyFlags['d'] = true; break;
         case SDLK_SPACE: keyFlags[' '] = true; break;
 
+        case SDLK_f:
+            perfMonitor.toggleFpsCap();
+            break;
+
+        case SDLK_o:
+        case SDLK_0:
+            perfMonitor.toggleOverlay();
+            break;
+
         case SDLK_ESCAPE:
-            SDL_Event quitEvent;
-            quitEvent.type = SDL_QUIT;
-            SDL_PushEvent(&quitEvent);
+            if (captureMouse) {
+                releaseMouse();
+            }
             break;
     }
 

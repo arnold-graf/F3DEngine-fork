@@ -7,6 +7,15 @@ namespace RayCast {
     vector<line2> rays = viewRays(pl, numRays, fovH, rayDistance);
     FrameBuffer frameBuffer;
 
+    inline void clampScreenY(double& y) {
+        y = std::clamp(y, 0.0, static_cast<double>(windowHeight));
+    }
+
+    inline int cappedVerticalScans(double ySpan) {
+        if (ySpan <= lineWidth) return 1;
+        return std::min(static_cast<int>(ySpan / lineWidth), windowHeight);
+    }
+
     inline void ensureFramebuffer() {
         if (frameBuffer.width != windowWidth || frameBuffer.height != windowHeight) {
             frameBuffer.init(windowWidth, windowHeight);
@@ -161,9 +170,13 @@ namespace RayCast {
     }
 
     void floorFill(Sector* sect, double rayAngle, double cosineFactor, int rayIndex, double yStart, double yEnd) {
+        clampScreenY(yStart);
+        clampScreenY(yEnd);
+        if (yEnd <= yStart) return;
+
         const Texture* fillTexture = &textures[sect->floorTextureFile];
         double ySpan = yEnd - yStart;
-        int yScans = ySpan > lineWidth ? static_cast<int>(ySpan / lineWidth) : 1;
+        int yScans = cappedVerticalScans(ySpan);
         double yScanLineSize = ySpan / yScans;
 
         double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
@@ -202,9 +215,13 @@ namespace RayCast {
     }
 
     void underSideFill(Sector* sect, double rayAngle, double cosineFactor, int rayIndex, double yStart, double yEnd) {
+        clampScreenY(yStart);
+        clampScreenY(yEnd);
+        if (yStart <= yEnd) return;
+
         const Texture* fillTexture = &textures[sect->bottomTextureFile];
         double ySpan = yStart - yEnd;
-        int yScans = ySpan > lineWidth ? static_cast<int>(ySpan / lineWidth) : 1;
+        int yScans = cappedVerticalScans(ySpan);
         double yScanLineSize = ySpan / yScans;
 
         double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
@@ -246,6 +263,7 @@ namespace RayCast {
         int yScans = static_cast<int>(textureBaseSize * textureScaleY);
         if (yScans < 1) yScans = 1;
         double ySpan = yBottom - yTop;
+        if (ySpan <= 0.0) return;
         double yScanlineHeight = ySpan / yScans;
 
         for (int y = 0; y < yScans; ++y) {
@@ -259,6 +277,7 @@ namespace RayCast {
             if ((y1 < 0 && y2 < 0) || (y1 >= windowHeight && y2 >= windowHeight)) continue;
             if (y1 < 0) y1 = 0;
             if (y2 >= windowHeight) y2 = windowHeight;
+            if (y2 <= y1) continue;
             fillOpaqueRect(x1, y1, x2, y2, color);
         }
     }

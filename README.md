@@ -57,9 +57,22 @@ A header-only 2D/3D math library in `vecSys/`:
 | **Space** | Jump |
 | **Shift** | Sprint |
 | **I** | Toggle menu (releases mouse capture) |
-| **Escape** | Quit |
+| **F** | Toggle 120 FPS cap |
+| **0** | Toggle performance overlay (hidden by default) |
+| **Escape** | Release mouse capture (click window to recapture) |
 
 Run from the repository root so `./gameDef/` and `./textures/` paths resolve correctly.
+
+### Performance overlay
+
+Bottom-right HUD: FPS, frame time (ms), process CPU %, CPU % per core, and FPS cap status.
+
+```bash
+./f3dengine --fps-cap 120   # default
+./f3dengine --no-fps-cap      # uncapped benchmark
+```
+
+Package power (macOS, requires sudo): `sudo ./scripts/measure_power.sh 10`
 
 ## Requirements
 

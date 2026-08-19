@@ -1,8 +1,11 @@
 #include <fstream>
+#include <chrono>
+#include <string>
 
 #include "globals.h"
 #include "glCallBacks.h"
 #include "IOUtils/saveAndLoad.h"
+#include "perfOverlay.h"
 
 namespace {
     bool writeSnapshotBmp(const std::string& path) {
@@ -49,6 +52,16 @@ int main(int argc, char* argv[]) {
         return runSnapshot(argv[2]);
     }
 
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--fps-cap" && i + 1 < argc) {
+            perfMonitor.fpsCap = std::max(0, std::stoi(argv[++i]));
+            perfMonitor.fpsCapEnabled = perfMonitor.fpsCap > 0;
+        } else if (arg == "--no-fps-cap") {
+            perfMonitor.fpsCapEnabled = false;
+        }
+    }
+
     // --- Game setup ---
     loadTextures("./gameDef/textures.json");
     lvl = loadLevelFromFile("./gameDef/savedLevel.json");
@@ -84,7 +97,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    SDL_GL_SetSwapInterval(1); // Enable vsync
+    SDL_GL_SetSwapInterval(0); // Manual FPS cap (default 120); vsync would override it
 
     // --- OpenGL state setup ---
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background to black
@@ -100,6 +113,9 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
 
     while (running) {
+        const auto frameStart = std::chrono::steady_clock::now();
+        perfMonitor.onFrameStart(frameStart);
+
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
                 case SDL_QUIT:
@@ -115,6 +131,11 @@ int main(int argc, char* argv[]) {
                     keyUp(event.key.keysym.sym);
                     break;
 
+                case SDL_MOUSEBUTTONDOWN:
+                    if (event.button.button == SDL_BUTTON_LEFT)
+                        mouseButtonDown(window);
+                    break;
+
                 case SDL_MOUSEMOTION:
                     mouseMotion(event.motion.x, event.motion.y, window);
                     break;
@@ -127,7 +148,8 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        display(window); // Your draw logic (calls rayCast(), etc.)
+        display(window);
+        perfMonitor.waitForFpsCap(frameStart);
     }
 
     // --- Cleanup ---
