@@ -40,6 +40,15 @@ namespace RayCast {
 
     void presentFramebuffer() {
         static GLuint presentTexture = 0;
+        static std::vector<unsigned char> rgba;
+
+        const int w = frameBuffer.width;
+        const int h = frameBuffer.height;
+        const size_t pixelCount = static_cast<size_t>(w) * h;
+        if (rgba.size() != pixelCount * 4) {
+            rgba.resize(pixelCount * 4);
+        }
+
         if (presentTexture == 0) {
             glGenTextures(1, &presentTexture);
             glBindTexture(GL_TEXTURE_2D, presentTexture);
@@ -47,23 +56,20 @@ namespace RayCast {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         }
 
-        std::vector<unsigned char> rgba(static_cast<size_t>(frameBuffer.width) * frameBuffer.height * 4);
-        for (int y = 0; y < frameBuffer.height; ++y) {
-            for (int x = 0; x < frameBuffer.width; ++x) {
-                const vecRGBA color = frameBuffer.accumulationBuffer[y * frameBuffer.width + x].clamped();
-                const size_t i = (static_cast<size_t>(y) * frameBuffer.width + x) * 4;
-                rgba[i]     = static_cast<unsigned char>(color.r * 255.99);
-                rgba[i + 1] = static_cast<unsigned char>(color.g * 255.99);
-                rgba[i + 2] = static_cast<unsigned char>(color.b * 255.99);
-                rgba[i + 3] = 255;
-            }
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < w * h; ++i) {
+            const vecRGBA& color = frameBuffer.accumulationBuffer[i];
+            const size_t o = static_cast<size_t>(i) * 4;
+            rgba[o]     = static_cast<unsigned char>(std::min(255.0, color.r * 255.99));
+            rgba[o + 1] = static_cast<unsigned char>(std::min(255.0, color.g * 255.99));
+            rgba[o + 2] = static_cast<unsigned char>(std::min(255.0, color.b * 255.99));
+            rgba[o + 3] = 255;
         }
 
         glDisable(GL_DEPTH_TEST);
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, presentTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, frameBuffer.width, frameBuffer.height, 0,
-            GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -95,77 +101,67 @@ namespace RayCast {
         return rays;
     }
 
-    void drawBaseWorld() {
+    void prepareFrame() {
         minRay = pl.yaw - (0.5 * fovH);
+        maxRay = minRay + fovH;
+        halfFovH = 0.5 * fovH;
         rayStep = fovH / numRays;
+        rayDistance = 5000;
         viewDistance = 1000;
         lineWidth = static_cast<double>(windowWidth) / numRays;
-
-        rays = viewRays(pl, numRays, fovH, viewDistance);
-
+        rays = viewRays(pl, numRays, fovH, rayDistance);
         verticalShift = pl.pitch * (windowHeight / (pi * 0.25));
         horizonCenterY = (0.5 * windowHeight) - verticalShift + pl.verticalOffset;
-
         ensureFramebuffer();
+    }
+
+    void drawBaseWorld() {
+        prepareFrame();
         frameBuffer.clear(vecRGBA::Black());
 
-        const unsigned int threadCount = std::max(1u, std::thread::hardware_concurrency());
         const Texture& skyTexture = textures["./textures/night_sky.ppm"];
         const Texture& floorTexture = textures["./textures/coarse_dirt.ppm"];
 
-        vector<std::thread> threads;
-
         if (horizonCenterY > 0.0) {
-            double yawRatio = (pl.yaw + pi) / (2 * pi);
-            int yScans = static_cast<int>(std::ceil((horizonCenterY - 1) / lineWidth));
+            const double yawRatio = (pl.yaw + pi) / (2 * pi);
+            const int yScans = static_cast<int>(std::ceil((horizonCenterY - 1) / lineWidth));
 
-            for (unsigned int t = 0; t < threadCount; ++t) {
-                threads.emplace_back([&, t] {
-                    for (int y = yScans - 1 - static_cast<int>(t); y >= 0; y -= static_cast<int>(threadCount)) {
-                        for (int x = 0; x < numRays; ++x) {
-                            int textY = skyTexture.height - 1 - y;
-                            int textureX = static_cast<int>(skyTexture.width * yawRatio + x);
-                            vecRGBA color = skyTexture.get(textureX, textY);
-                            float x1 = x * lineWidth, x2 = (x + 1) * lineWidth;
-                            float y1 = horizonCenterY - (y * lineWidth), y2 = horizonCenterY - ((y - 1) * lineWidth);
-                            fillOpaqueRect(x1, y1, x2, y2, color);
-                        }
-                    }
-                });
+            #pragma omp parallel for schedule(static)
+            for (int y = yScans - 1; y >= 0; --y) {
+                for (int x = 0; x < numRays; ++x) {
+                    const int textY = skyTexture.height - 1 - y;
+                    const int textureX = static_cast<int>(skyTexture.width * yawRatio + x);
+                    const vecRGBA color = skyTexture.get(textureX, textY);
+                    const float x1 = x * lineWidth, x2 = (x + 1) * lineWidth;
+                    const float y1 = horizonCenterY - (y * lineWidth), y2 = horizonCenterY - ((y - 1) * lineWidth);
+                    fillOpaqueRect(x1, y1, x2, y2, color);
+                }
             }
-
-            for (auto& thread : threads) thread.join();
-            threads.clear();
         }
 
         if (horizonCenterY < windowHeight) {
-            int yScans = static_cast<int>(std::ceil((windowHeight - horizonCenterY - 1) / lineWidth));
+            const int yScans = static_cast<int>(std::ceil((windowHeight - horizonCenterY - 1) / lineWidth));
 
-            for (unsigned int t = 0; t < threadCount; ++t) {
-                threads.emplace_back([&, t] {
-                    for (int y = static_cast<int>(t); y < yScans; y += static_cast<int>(threadCount)) {
-                        double horizonRatio = halfWindowHeight / ((y + 1) * lineWidth);
-                        for (int x = 0; x < numRays; ++x) {
-                            double rayAngle = minRay + (x * rayStep);
-                            double floorRayLength = (Player::BASE_CAMERA_HEIGHT + pl.verticalOffset) * horizonRatio;
-                            floorRayLength /= std::cos(std::abs(rayAngle - pl.yaw));
-                            double brightness = (viewDistance - floorRayLength) / viewDistance;
+            #pragma omp parallel for schedule(static)
+            for (int y = 0; y < yScans; ++y) {
+                const double horizonRatio = halfWindowHeight / ((y + 1) * lineWidth);
+                for (int x = 0; x < numRays; ++x) {
+                    const double rayAngle = minRay + (x * rayStep);
+                    double floorRayLength = (Player::BASE_CAMERA_HEIGHT + pl.verticalOffset) * horizonRatio;
+                    floorRayLength /= std::cos(std::abs(rayAngle - pl.yaw));
+                    const double brightness = (viewDistance - floorRayLength) / viewDistance;
 
-                            double worldX = pl.position.x + floorRayLength * std::cos(rayAngle);
-                            double worldY = pl.position.y + floorRayLength * std::sin(rayAngle);
-                            vecRGBA color = applyLighting(
-                                floorTexture.get(worldX, worldY),
-                                brightness, {worldX, worldY}, 0.0, lvl.lightList);
+                    const double worldX = pl.position.x + floorRayLength * std::cos(rayAngle);
+                    const double worldY = pl.position.y + floorRayLength * std::sin(rayAngle);
+                    const vecRGBA color = applyLighting(
+                        floorTexture.get(worldX, worldY),
+                        brightness, {worldX, worldY}, 0.0, lvl.lightList);
 
-                            float x1 = x * lineWidth, x2 = (x + 1) * lineWidth;
-                            float y1 = horizonCenterY + (y * lineWidth), y2 = y1 + lineWidth;
-                            fillOpaqueRect(x1, y1, x2, y2, color);
-                        }
-                    }
-                });
+                    const float x1 = x * lineWidth, x2 = (x + 1) * lineWidth;
+                    const float y1 = horizonCenterY + (y * lineWidth), y2 = y1 + lineWidth;
+                    fillOpaqueRect(x1, y1, x2, y2, color);
+                }
             }
-
-            for (auto& thread : threads) thread.join();
         }
     }
 
@@ -217,21 +213,26 @@ namespace RayCast {
     void underSideFill(Sector* sect, double rayAngle, double cosineFactor, int rayIndex, double yStart, double yEnd) {
         clampScreenY(yStart);
         clampScreenY(yEnd);
-        if (yStart <= yEnd) return;
+
+        const double yHigh = std::max(yStart, yEnd);
+        const double yLow = std::min(yStart, yEnd);
+        if (yHigh <= yLow + 1e-5) return;
 
         const Texture* fillTexture = &textures[sect->bottomTextureFile];
-        double ySpan = yStart - yEnd;
-        int yScans = cappedVerticalScans(ySpan);
-        double yScanLineSize = ySpan / yScans;
+        const double ySpan = yHigh - yLow;
+        const int yScans = cappedVerticalScans(ySpan);
+        const double yScanLineSize = ySpan / yScans;
 
-        double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
-        double underSideZ = sect->floatingHeight;
-        double zDistance = underSideZ - cameraZ;
-        vec2 sectorCenter = sect->outline.centerPoint();
+        const double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
+        const double underSideZ = sect->floatingHeight;
+        if (cameraZ >= underSideZ - 1e-5) return;
+
+        const double zDistance = underSideZ - cameraZ;
+        const vec2 sectorCenter = sect->outline.centerPoint();
 
         for (int y = 0; y < yScans; ++y) {
-            double screenY = yStart - (y * yScanLineSize);
-            double screenYFromHorizon = horizonCenterY - screenY;
+            const double screenY = yHigh - (y + 0.5) * yScanLineSize;
+            const double screenYFromHorizon = horizonCenterY - screenY;
 
             if (std::abs(screenYFromHorizon) < 1e-5) continue;
 
@@ -243,42 +244,58 @@ namespace RayCast {
             worldCoord.orbit(sectorCenter, -sect->rotation);
             worldCoord -= sectorCenter;
 
-            double brightness = (viewDistance - rayLength) / viewDistance;
-            vecRGBA color = applyLighting(
+            const double brightness = (viewDistance - rayLength) / viewDistance;
+            const vecRGBA color = applyLighting(
                 fillTexture->get(worldCoord.x, worldCoord.y),
                 brightness, worldPos, underSideZ, lvl.lightList);
 
-            float x1 = rayIndex * lineWidth, x2 = x1 + lineWidth;
-            float y1 = screenY, y2 = y1 - yScanLineSize;
+            const float x1 = rayIndex * lineWidth, x2 = x1 + lineWidth;
+            float y1 = screenY + yScanLineSize * 0.5f;
+            float y2 = screenY - yScanLineSize * 0.5f;
 
             if ((y1 < 0 && y2 < 0) || (y1 >= windowHeight && y2 >= windowHeight)) continue;
             if (y2 < 0) y2 = 0;
             if (y1 > windowHeight) y1 = windowHeight;
 
-            fillOpaqueRect(x1, y1, x2, y2, color);
+            fillOpaqueRect(x1, y2, x2, y1, color);
         }
     }
 
-    void basicColumnFill(const Texture* fillTexture, double x1, double x2, double yTop, double yBottom, int textureXIndex, double brightness, const vec2& worldPos, double elevationBottom, double elevationTop, double textureScaleY = 1.0, bool invertTexureY = false, double textureBaseSize = Sector::defaultWallHeight) {
-        int yScans = static_cast<int>(textureBaseSize * textureScaleY);
-        if (yScans < 1) yScans = 1;
-        double ySpan = yBottom - yTop;
-        if (ySpan <= 0.0) return;
-        double yScanlineHeight = ySpan / yScans;
+    inline bool cameraBelowSector(const Sector& sect) {
+        return pl.cameraHeight < sect.floatingHeight - 1e-5;
+    }
 
-        for (int y = 0; y < yScans; ++y) {
-            int textureYIndex = invertTexureY ? y : fillTexture->height - y;
-            double t = (y + 0.5) / yScans;
-            double elevation = elevationBottom + t * (elevationTop - elevationBottom);
-            vecRGBA color = applyLighting(
-                fillTexture->get(textureXIndex, textureYIndex),
-                brightness, worldPos, elevation, lvl.lightList);
-            float y1 = yTop + (y * yScanlineHeight), y2 = y1 + yScanlineHeight;
-            if ((y1 < 0 && y2 < 0) || (y1 >= windowHeight && y2 >= windowHeight)) continue;
-            if (y1 < 0) y1 = 0;
-            if (y2 >= windowHeight) y2 = windowHeight;
-            if (y2 <= y1) continue;
-            fillOpaqueRect(x1, y1, x2, y2, color);
+    void basicColumnFill(const Texture* fillTexture, double x1, double x2, double yTop, double yBottom, int textureXIndex, double brightness, const vec2& worldPos, double elevationBottom, double elevationTop, double textureScaleY = 1.0, bool invertTexureY = false, double textureBaseSize = Sector::defaultWallHeight) {
+        (void)textureScaleY;
+        (void)textureBaseSize;
+
+        const int yMin = std::max(0, static_cast<int>(std::floor(yTop)));
+        const int yMax = std::min(frameBuffer.height, static_cast<int>(std::ceil(yBottom)));
+        const int xMin = std::max(0, static_cast<int>(std::floor(x1)));
+        const int xMax = std::min(frameBuffer.width, static_cast<int>(std::ceil(x2)));
+        if (xMin >= xMax || yMin >= yMax) return;
+
+        const double ySpan = yBottom - yTop;
+        if (ySpan <= 0.0) return;
+
+        const int texX = (textureXIndex % static_cast<int>(fillTexture->width) + static_cast<int>(fillTexture->width)) % static_cast<int>(fillTexture->width);
+        const int texHeight = static_cast<int>(fillTexture->height);
+        const double invYSpan = 1.0 / ySpan;
+        const vecRGBA lightBottom = computeLighting(worldPos, elevationBottom, lvl.lightList);
+        const vecRGBA lightTop = computeLighting(worldPos, elevationTop, lvl.lightList);
+        const size_t rowWidth = static_cast<size_t>(frameBuffer.width);
+
+        for (int y = yMin; y < yMax; ++y) {
+            const double t = std::clamp(((y + 0.5) - yTop) * invYSpan, 0.0, 1.0);
+            const int texY = invertTexureY
+                ? static_cast<int>(t * (texHeight - 1))
+                : texHeight - 1 - static_cast<int>(t * (texHeight - 1));
+            const vecRGBA light = lightBottom * (1.0 - t) + lightTop * t;
+            const vecRGBA color = (fillTexture->get(texX, texY) * brightness * light).clamped();
+            const size_t row = static_cast<size_t>(y) * rowWidth;
+            for (int x = xMin; x < xMax; ++x) {
+                frameBuffer.accumulationBuffer[row + x] = color;
+            }
         }
     }
 
@@ -459,8 +476,10 @@ namespace RayCast {
                         wallInfo.textureXIndex, brightness, wallWorldPos,
                         workingSector.floatingHeight, floorElevation,
                         workingSector.baseHeight / workingSector.defaultWallHeight);
-                    underSideFill(&workingSector, rayAngle, cosineFactor, x,
-                        wallInfo.basewWallBottomY, 0.0);
+                    if (cameraBelowSector(workingSector) && wallInfo.basewWallBottomY < horizonCenterY) {
+                        underSideFill(&workingSector, rayAngle, cosineFactor, x,
+                            wallInfo.basewWallBottomY, 0.0);
+                    }
                 }
             } else if (obj.isEntryRay) {
                 if (workingWall.isVisibleWall) {
@@ -477,15 +496,19 @@ namespace RayCast {
                     workingSector.floatingHeight, floorElevation,
                     workingSector.baseHeight / workingSector.defaultWallHeight);
 
-                if (obj.pairPartnerIndex >= 0 && obj.pairPartnerIndex < static_cast<int>(view.size())) {
-                    const rayPack& pair = view[obj.pairPartnerIndex];
-                    if (!std::isfinite(pair.collInfo.rayLength)) continue;
-
-                    sectorFillMetadata pairWallInfo = sectorDataCalc(&workingSector, &workingWall,
-                        pair.collInfo, pair.collInfo.rayLength * cosineFactor);
-                    if (pairWallInfo.basewWallBottomY < horizonCenterY) {
+                if (cameraBelowSector(workingSector) && wallInfo.basewWallBottomY < horizonCenterY) {
+                    if (obj.pairPartnerIndex >= 0 && obj.pairPartnerIndex < static_cast<int>(view.size())) {
+                        const rayPack& pair = view[obj.pairPartnerIndex];
+                        if (std::isfinite(pair.collInfo.rayLength)) {
+                            const Sector::Wall& pairWall = workingSector.walls[pair.subIndex];
+                            const sectorFillMetadata pairWallInfo = sectorDataCalc(&workingSector, &pairWall,
+                                pair.collInfo, pair.collInfo.rayLength * cosineFactor);
+                            underSideFill(&workingSector, rayAngle, cosineFactor, x,
+                                pairWallInfo.basewWallBottomY, wallInfo.basewWallBottomY);
+                        }
+                    } else {
                         underSideFill(&workingSector, rayAngle, cosineFactor, x,
-                            pairWallInfo.basewWallBottomY, wallInfo.basewWallBottomY);
+                            wallInfo.basewWallBottomY, 0.0);
                     }
                 }
             } else {
@@ -513,36 +536,16 @@ namespace RayCast {
     }
 
     void rayCast() {
-        minRay = pl.yaw - (0.5 * fovH);
-        maxRay = minRay + fovH;
-        halfFovH = (0.5 * fovH);
-        rayStep = fovH / numRays;
-        rayDistance = 5000;
-        viewDistance = 1000;
-        lineWidth = static_cast<double>(windowWidth) / numRays;
-
-        rays = viewRays(pl, numRays, fovH, rayDistance);
-
-        verticalShift = pl.pitch * (windowHeight / (pi * 0.25));
-        horizonCenterY = (0.5 * windowHeight) - verticalShift + pl.verticalOffset;
-
-        ensureFramebuffer();
-
-        const unsigned int threadCount = std::max(1u, std::thread::hardware_concurrency());
-        vector<std::thread> threads;
-
-        for (unsigned int t = 0; t < threadCount; ++t) {
-            threads.emplace_back([&, t] {
-                RayViewWorkspace workspace;
-                for (int x = static_cast<int>(t); x < static_cast<int>(rays.size()); x += static_cast<int>(threadCount)) {
-                    const line2& ray = rays[x];
-                    const double rayAngle = minRay + rayStep * x;
-                    const double cosineFactor = std::cos(std::abs(rayAngle - pl.yaw));
-                    renderRayColumn(x, ray, rayAngle, cosineFactor, workspace);
-                }
-            });
+        #pragma omp parallel
+        {
+            RayViewWorkspace workspace;
+            #pragma omp for schedule(static)
+            for (int x = 0; x < static_cast<int>(rays.size()); ++x) {
+                const line2& ray = rays[x];
+                const double rayAngle = minRay + rayStep * x;
+                const double cosineFactor = std::cos(std::abs(rayAngle - pl.yaw));
+                renderRayColumn(x, ray, rayAngle, cosineFactor, workspace);
+            }
         }
-
-        for (auto& thread : threads) thread.join();
     }
 };

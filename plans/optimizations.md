@@ -16,15 +16,13 @@ This document tracks performance improvements beyond the two implemented in the 
 
 ## High priority (next)
 
-### 3. Persistent thread pool
-- **Problem:** `drawBaseWorld()` and `rayCast()` spawn and join `std::thread::hardware_concurrency()` threads every frame.
-- **Approach:** Fixed worker pool (or OpenMP `#pragma omp parallel for` on the ray index loop) that wakes each frame instead of creating threads.
-- **Expected gain:** Moderate — removes per-frame thread creation/teardown overhead.
+### 3. Persistent thread pool / OpenMP parallel loops
+- **Was:** `drawBaseWorld()` and `rayCast()` spawned and joined `std::thread::hardware_concurrency()` threads every frame.
+- **Now:** OpenMP `#pragma omp parallel for` on sky/floor rows and ray columns (workers persist for the process lifetime).
 
 ### 4. Wall vertical spans (Doom-style columns)
-- **Problem:** `basicColumnFill()` still emits one rectangle per texture row (~128 quads per wall column).
-- **Approach:** For each wall slice, compute top/bottom screen Y once and fill a single vertical span (or one span per screen-pixel row using `lineWidth` step, not texture height).
-- **Expected gain:** Large — fewer pixels touched, less lighting/texture work.
+- **Was:** `basicColumnFill()` emitted one rectangle per texture row (~128 quads per wall column), each calling `applyLighting()` per row.
+- **Now:** One screen-pixel row per step; lighting sampled at column top/bottom and lerped vertically (2 light evaluations per wall column instead of ~128).
 
 ### 5. Eliminate mutex / merge passes in threaded draws
 - **Problem:** Partially solved by writing columns directly to the framebuffer without merging quad lists.
@@ -58,7 +56,7 @@ This document tracks performance improvements beyond the two implemented in the 
 - Wall columns share the same world XY; only elevation varies vertically. Cache `computeLighting()` at column base and interpolate, or sample once per column.
 
 ### 11. Skip `illuminated()` for omnidirectional lights
-- Default point lights use full 360° cutoffs; branch can be skipped when `halfFOVH >= pi`.
+- **Done:** Default point lights with `halfFOVH/V >= pi` skip the angle test in `computeLighting()`.
 
 ### 12. Shadow rays
 - Not implemented. Would require ray tests from each shaded point toward each light — expensive; only consider for small light counts and after span-based rendering.

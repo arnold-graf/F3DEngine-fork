@@ -97,7 +97,8 @@ inline vecRGBA computeLighting(const vec2& worldPos, double elevation,
     vecRGBA result(ambient, ambient, ambient, 1.0);
     for (const Light& light : lights) {
         if (!light.isON) continue;
-        if (!light.illuminated(worldPos, elevation)) continue;
+        const bool omnidirectional = light.halfFOVH >= pi - 1e-6 && light.halfFOVV >= pi - 1e-6;
+        if (!omnidirectional && !light.illuminated(worldPos, elevation)) continue;
         result = result + light.lightUp(worldPos, elevation);
     }
     return result.clamped(vecRGBA(0.0, 0.0, 0.0, 0.0), vecRGBA(4.0, 4.0, 4.0, 1.0));

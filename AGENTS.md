@@ -19,6 +19,12 @@ This will:
 
 After graphics or presentation changes, run the script and confirm it passes. Open `build/snapshot.png` if you need to inspect the image manually.
 
+## Code Style
+
+This project should use simple yet modern C++. We always spell out names
+completely, we don’t use abbreviations outside of very common conventions (i
+instead of index is OK), and we don’t use overly academic jargon.
+
 ## Common pitfalls
 
 - **Presentation path:** Interactive mode presents the CPU `FrameBuffer` with an OpenGL textured fullscreen quad. `glDrawPixels` is unreliable with the engine's Y-down orthographic projection on macOS.
