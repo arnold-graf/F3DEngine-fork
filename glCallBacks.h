@@ -48,8 +48,8 @@ void display(SDL_Window* window) {
     else if (currentGameState == GAMESTATES::GAME_PLAY || currentGameState == GAMESTATES::MENU_OPEN || currentGameState == GAMESTATES::PAUSED) {
         if (currentGameState == GAMESTATES::GAME_PLAY) {
             gamePLayKeys();
-            lvl.sectorList[5].orbit({360, 360}, 0.001 * pi);
-            lvl.sectorList[5].rotate(0.002 * pi);
+            lvl.sectorList[5].orbit({360, 360}, 0.001 * pi * frameScale);
+            lvl.sectorList[5].rotate(0.002 * pi * frameScale);
             lvl.update();
             pl.physicUpdate();
             for (Sector& sector : lvl.sectorList) {
@@ -148,7 +148,7 @@ void keyDown(SDL_Keycode key, SDL_Window* window) {
         case SDLK_SPACE: keyFlags[' '] = true; break;
 
         case SDLK_f:
-            perfMonitor.toggleFpsCap();
+            perfMonitor.cycleFpsCap();
             break;
 
         case SDLK_o:

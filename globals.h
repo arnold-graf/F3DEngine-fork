@@ -44,7 +44,8 @@ int windowWidth = 1024, windowHeight = 576, halfWindowWidth = windowWidth / 2, h
 int numRays = 256, veritcalRays = (numRays*9)/16;
 bool keyFlags[256] = {false};
 double fovH = 75*pi/180.0;
-int previousFrameTime = 0;
+double frameDeltaSeconds = 1.0 / 120.0;
+double frameScale = 1.0; // 1.0 at 120 FPS; movement/physics multiply by this
 double movementRatio = 1.0;
 
 enum class GAMESTATES {TITLE_SCREEN, GAME_PLAY, GAME_OVER, MENU_OPEN, PAUSED, LEVEL_EDITOR, OPTIONS_MENU};

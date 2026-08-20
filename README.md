@@ -57,7 +57,7 @@ A header-only 2D/3D math library in `vecSys/`:
 | **Space** | Jump |
 | **Shift** | Sprint |
 | **I** | Toggle menu (releases mouse capture) |
-| **F** | Toggle 120 FPS cap |
+| **F** | Cycle FPS cap: 60 → 120 → uncapped |
 | **0** | Toggle performance overlay (hidden by default) |
 | **Escape** | Release mouse capture (click window to recapture) |
 

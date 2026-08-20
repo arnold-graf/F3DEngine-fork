@@ -99,8 +99,8 @@ struct Player {
             return vec2{infinity, infinity};
         };
     
-        // Initial movement
-        double adjustedSpeed = speed * ratio;
+        // Initial movement (frameScale keeps speed constant across FPS caps)
+        double adjustedSpeed = speed * ratio * frameScale;
         vec2 initial_mov = vec2::fromAngle(yaw) * adjustedSpeed;
     
         if (onRelevantZHeight.empty()) {
@@ -233,7 +233,7 @@ struct Player {
             }
         }
 
-        position += totalPush;
+        position += totalPush * frameScale;
 
         // --- Apply physics ---
          if (verticalOffset > sectorFloorHeight + 0.01) { // Check against the determined floor height
@@ -242,8 +242,8 @@ struct Player {
 
 
         if (!isOnGround) {
-            verticalSpeed -= GRAVITY;
-            verticalOffset += verticalSpeed;
+            verticalSpeed -= GRAVITY * frameScale;
+            verticalOffset += verticalSpeed * frameScale;
 
             // Check for landing ON or BELOW the determined floor height
             if (verticalOffset <= sectorFloorHeight) {

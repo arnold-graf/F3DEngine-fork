@@ -103,14 +103,21 @@ struct PerfMonitor {
         const std::string cpuLine = std::format("CPU {:4.0f}%", cpuPercentSmoothed > 0.0 ? cpuPercentSmoothed : 0.0);
         const std::string coreLine = std::format("cor {:4.1f}%/c", cpuPerCoreSmoothed > 0.0 ? cpuPerCoreSmoothed : 0.0);
         const std::string capLine = fpsCapEnabled
-            ? std::format("cap {:3d} ON", fpsCap)
+            ? std::format("cap {:3d}", fpsCap)
             : std::string("cap OFF");
 
         BitmapFont::drawPanelBottomRight(framebuffer, 8, {fpsLine, frameLine, cpuLine, coreLine, capLine});
     }
 
-    void toggleFpsCap() {
-        fpsCapEnabled = !fpsCapEnabled;
+    void cycleFpsCap() {
+        if (fpsCapEnabled && fpsCap == 60) {
+            fpsCap = 120;
+        } else if (fpsCapEnabled && fpsCap == 120) {
+            fpsCapEnabled = false;
+        } else {
+            fpsCapEnabled = true;
+            fpsCap = 60;
+        }
     }
 
     void toggleOverlay() {

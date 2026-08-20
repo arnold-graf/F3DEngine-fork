@@ -51,14 +51,17 @@ The in-game overlay (bottom-right) shows:
 
 Controls:
 
-- **F** — toggle FPS cap on/off
+- **F** — cycle FPS cap: 60 → 120 → uncapped
 - **0** — toggle overlay visibility (hidden by default)
 
 CLI:
 
 ```bash
 ./f3dengine --fps-cap 120    # default
+./f3dengine --fps-cap 60
 ./f3dengine --no-fps-cap     # uncapped
 ```
+
+Game speed is frame-rate independent (movement, physics, and animated sectors scale with real elapsed time).
 
 Wattage is not available in-app without elevated privileges. On macOS use `sudo ./scripts/measure_power.sh 10` while the game runs. For external CPU sampling use `./scripts/measure_cpu.sh 10`.

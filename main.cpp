@@ -111,9 +111,17 @@ int main(int argc, char* argv[]) {
     // --- Main loop ---
     bool running = true;
     SDL_Event event;
+    auto lastFrameTime = std::chrono::steady_clock::now();
 
     while (running) {
         const auto frameStart = std::chrono::steady_clock::now();
+        frameDeltaSeconds = std::chrono::duration<double>(frameStart - lastFrameTime).count();
+        lastFrameTime = frameStart;
+        if (frameDeltaSeconds <= 0.0 || frameDeltaSeconds > 0.25) {
+            frameDeltaSeconds = 1.0 / 120.0;
+        }
+        frameScale = frameDeltaSeconds * 120.0;
+
         perfMonitor.onFrameStart(frameStart);
 
         while (SDL_PollEvent(&event)) {
