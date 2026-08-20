@@ -30,7 +30,7 @@ and ceilings, skyboxes, and billboards.
 
 ### Data and tools
 
-- Levels and texture lists are stored as **JSON** (`gameDef/savedLevel.json`, `gameDef/textures.json`).
+- Levels and texture lists are stored as **JSON** (`gameDef/savedLevel.json`, `gameDef/savedLevelVoxel.json`, `gameDef/textures.json`).
 - Textures are **PPM** images in `textures/`.
 - A **level editor** skeleton exists in `levelEditor.h` (2D outline overlay); full editor mode is not hooked up to input yet.
 - `keep_safe/` holds older experiments (collision, raycast, sorting) kept for reference.
@@ -142,6 +142,13 @@ F3DEngine/
 
 Levels are JSON objects with `sectorList` and `billboardList`. Each sector has an `outline` (polygon points), height fields, texture paths, and a `walls` array aligned with outline edges. See `gameDef/savedLevel.json` for a full example.
 
+Optional `terrain` enables Comanche-style voxel heightfield floors (Perlin FBM). See `gameDef/savedLevelVoxel.json` — same objects as the default scene with procedural hills replacing the flat ground.
+
+```bash
+./f3dengine --level ./gameDef/savedLevelVoxel.json
+./f3dengine --snapshot build/snapshot.png --level ./gameDef/savedLevelVoxel.json
+```
+
 To register textures, list PPM paths in `gameDef/textures.json`. Textures are loaded at startup before the level.
 
 ## Architecture (high level)
@@ -152,8 +159,8 @@ main loop
   ├── gamePLayKeys()          → player input
   ├── pl.physicUpdate()       → gravity, jump, collision
   ├── lvl.update()            → package sectors/billboards for raycast
-  └── RayCast::drawBaseWorld() → sky + default floor
-      RayCast::rayCast()       → sector walls, sector floors, billboards
+  └── RayCast::drawBaseWorld() → sky + flat or voxel terrain floor
+      RayCast::rayCast()       → sector walls, sector floors, billboards (drawn on top)
 ```
 
 Rendering uses an orthographic 2D OpenGL projection; the “3D” effect is entirely software raycasting into screen-space quads.

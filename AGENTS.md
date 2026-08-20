@@ -25,6 +25,11 @@ This project should use simple yet modern C++. We always spell out names
 completely, we don’t use abbreviations outside of very common conventions (i
 instead of index is OK), and we don’t use overly academic jargon.
 
+## Documentation
+
+Whenever we make larger changes to the codebase, or gain important new
+functionality, we update the README.md to reflect that.
+
 ## Common pitfalls
 
 - **Presentation path:** Interactive mode presents the CPU `FrameBuffer` with an OpenGL textured fullscreen quad. `glDrawPixels` is unreliable with the engine's Y-down orthographic projection on macOS.
@@ -63,5 +68,12 @@ CLI:
 ```
 
 Game speed is frame-rate independent (movement, physics, and animated sectors scale with real elapsed time).
+
+### Voxel terrain level
+
+```bash
+./f3dengine --level ./gameDef/savedLevelVoxel.json
+./f3dengine --snapshot build/snapshot.png --level ./gameDef/savedLevelVoxel.json
+```
 
 Wattage is not available in-app without elevated privileges. On macOS use `sudo ./scripts/measure_power.sh 10` while the game runs. For external CPU sampling use `./scripts/measure_cpu.sh 10`.

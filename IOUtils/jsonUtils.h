@@ -158,13 +158,69 @@ inline void from_json(const json& j, Light& val) {
     val.cuttoffMaxV = val.pitch + val.halfFOVV + pi;
 }
 
+// --- Terrain ---
+
+inline void to_json(json& j, const Mountain& val) {
+    j = {
+        {"center", vec2{val.centerX, val.centerY}},
+        {"radius", val.radius},
+        {"peakHeight", val.peakHeight},
+        {"detailScale", val.detailScale},
+        {"seed", val.seed}
+    };
+}
+
+inline void from_json(const json& j, Mountain& val) {
+    vec2 center {};
+    j.at("center").get_to(center);
+    val.centerX = center.x;
+    val.centerY = center.y;
+    j.at("radius").get_to(val.radius);
+    j.at("peakHeight").get_to(val.peakHeight);
+    if (j.contains("detailScale")) j.at("detailScale").get_to(val.detailScale);
+    if (j.contains("seed")) j.at("seed").get_to(val.seed);
+}
+
+inline void to_json(json& j, const TerrainSettings& val) {
+    j = {
+        {"enabled", val.enabled},
+        {"seed", val.seed},
+        {"noiseScale", val.noiseScale},
+        {"heightAmplitude", val.heightAmplitude},
+        {"baseHeight", val.baseHeight},
+        {"stepSize", val.stepSize},
+        {"fbmOctaves", val.fbmOctaves},
+        {"fbmPersistence", val.fbmPersistence},
+        {"fbmLacunarity", val.fbmLacunarity},
+        {"textureFile", val.textureFile},
+        {"groundSectorIndex", val.groundSectorIndex},
+        {"mountains", val.mountains}
+    };
+}
+
+inline void from_json(const json& j, TerrainSettings& val) {
+    if (j.contains("enabled")) j.at("enabled").get_to(val.enabled);
+    if (j.contains("seed")) j.at("seed").get_to(val.seed);
+    if (j.contains("noiseScale")) j.at("noiseScale").get_to(val.noiseScale);
+    if (j.contains("heightAmplitude")) j.at("heightAmplitude").get_to(val.heightAmplitude);
+    if (j.contains("baseHeight")) j.at("baseHeight").get_to(val.baseHeight);
+    if (j.contains("stepSize")) j.at("stepSize").get_to(val.stepSize);
+    if (j.contains("fbmOctaves")) j.at("fbmOctaves").get_to(val.fbmOctaves);
+    if (j.contains("fbmPersistence")) j.at("fbmPersistence").get_to(val.fbmPersistence);
+    if (j.contains("fbmLacunarity")) j.at("fbmLacunarity").get_to(val.fbmLacunarity);
+    if (j.contains("textureFile")) j.at("textureFile").get_to(val.textureFile);
+    if (j.contains("groundSectorIndex")) j.at("groundSectorIndex").get_to(val.groundSectorIndex);
+    if (j.contains("mountains")) j.at("mountains").get_to(val.mountains);
+}
+
 // --- Level ---
 
 inline void to_json(json& j, const Level& val) {
     j = {
         {"sectorList", val.sectorList},
         {"billboardList", val.billboardList},
-        {"lightList", val.lightList}
+        {"lightList", val.lightList},
+        {"terrain", val.terrain}
     };
 }
 
@@ -172,4 +228,5 @@ inline void from_json(const json& j, Level& val) {
     j.at("sectorList").get_to(val.sectorList);
     j.at("billboardList").get_to(val.billboardList);
     if (j.contains("lightList")) j.at("lightList").get_to(val.lightList);
+    if (j.contains("terrain")) j.at("terrain").get_to(val.terrain);
 }

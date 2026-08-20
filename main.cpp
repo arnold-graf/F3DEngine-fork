@@ -6,8 +6,15 @@
 #include "glCallBacks.h"
 #include "IOUtils/saveAndLoad.h"
 #include "perfOverlay.h"
+#include "voxelTerrain.h"
 
 namespace {
+    void loadGameLevel(const std::string& levelPath) {
+        lvl = loadLevelFromFile(levelPath);
+        lvl.update();
+        VoxelTerrain::initialize(lvl.terrain);
+    }
+
     bool writeSnapshotBmp(const std::string& path) {
         if (RayCast::frameBuffer.width <= 0 || RayCast::frameBuffer.height <= 0) {
             std::cerr << "snapshot: framebuffer not initialized\n";
@@ -22,7 +29,7 @@ namespace {
         }
     }
 
-    int runSnapshot(const std::string& outputPath) {
+    int runSnapshot(const std::string& outputPath, const std::string& levelPath) {
         windowWidth = 1024;
         windowHeight = 576;
         halfWindowWidth = windowWidth / 2;
@@ -31,9 +38,13 @@ namespace {
         veritcalRays = (windowWidth / 16) * 9;
 
         loadTextures("./gameDef/textures.json");
-        lvl = loadLevelFromFile("./gameDef/savedLevel.json");
-        lvl.update();
+        loadGameLevel(levelPath);
         updateLevelLights(lvl.lightList);
+
+        // Snapshot mode has no game loop; settle the player onto the floor first.
+        for (int i = 0; i < 240; ++i) {
+            pl.physicUpdate();
+        }
 
         RayCast::drawBaseWorld();
         RayCast::rayCast();
@@ -48,13 +59,18 @@ namespace {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc >= 3 && std::string(argv[1]) == "--snapshot") {
-        return runSnapshot(argv[2]);
-    }
+    std::string levelPath = "./gameDef/savedLevel.json";
+    std::string snapshotPath;
+    bool snapshotMode = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "--fps-cap" && i + 1 < argc) {
+        if (arg == "--snapshot" && i + 1 < argc) {
+            snapshotMode = true;
+            snapshotPath = argv[++i];
+        } else if (arg == "--level" && i + 1 < argc) {
+            levelPath = argv[++i];
+        } else if (arg == "--fps-cap" && i + 1 < argc) {
             perfMonitor.fpsCap = std::max(0, std::stoi(argv[++i]));
             perfMonitor.fpsCapEnabled = perfMonitor.fpsCap > 0;
         } else if (arg == "--no-fps-cap") {
@@ -62,10 +78,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (snapshotMode) {
+        return runSnapshot(snapshotPath, levelPath);
+    }
+
     // --- Game setup ---
     loadTextures("./gameDef/textures.json");
-    lvl = loadLevelFromFile("./gameDef/savedLevel.json");
-    lvl.update();
+    loadGameLevel(levelPath);
 
     // --- SDL + OpenGL Setup ---
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -73,7 +92,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Ask SDL to give us an OpenGL 2.1 context
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -97,18 +115,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    SDL_GL_SetSwapInterval(0); // Manual FPS cap (default 120); vsync would override it
+    SDL_GL_SetSwapInterval(0);
 
-    // --- OpenGL state setup ---
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background to black
-
-    // Set orthographic 2D projection (matches FreeGLUT)
-    onReshape(windowWidth, windowHeight); // Sets viewport + matrices
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    onReshape(windowWidth, windowHeight);
 
     SDL_ShowCursor(SDL_DISABLE);
     SDL_WarpMouseInWindow(window, halfWindowWidth, halfWindowHeight);
 
-    // --- Main loop ---
     bool running = true;
     SDL_Event event;
     auto lastFrameTime = std::chrono::steady_clock::now();
@@ -160,7 +174,6 @@ int main(int argc, char* argv[]) {
         perfMonitor.waitForFpsCap(frameStart);
     }
 
-    // --- Cleanup ---
     SDL_GL_DeleteContext(glContext);
     SDL_DestroyWindow(window);
     SDL_Quit();

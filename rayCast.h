@@ -1,4 +1,6 @@
 #include "globals.h"
+#include "floorProjection.h"
+#include "voxelTerrain.h"
 
 namespace RayCast {
     vector<line2> viewRays(Player& plr, int numRays, double fovRadians, double viewDistance);
@@ -6,19 +8,39 @@ namespace RayCast {
     double halfFovH, minRay, maxRay, rayStep, rayDistance, viewDistance, lineWidth, verticalShift, horizonCenterY, upperViewLimit, lowerViewLimit;
     vector<line2> rays = viewRays(pl, numRays, fovH, rayDistance);
     FrameBuffer frameBuffer;
-
-    inline void clampScreenY(double& y) {
-        y = std::clamp(y, 0.0, static_cast<double>(windowHeight));
-    }
-
-    inline int cappedVerticalScans(double ySpan) {
-        if (ySpan <= lineWidth) return 1;
-        return std::min(static_cast<int>(ySpan / lineWidth), windowHeight);
-    }
+    vector<double> depthBuffer;
 
     inline void ensureFramebuffer() {
         if (frameBuffer.width != windowWidth || frameBuffer.height != windowHeight) {
             frameBuffer.init(windowWidth, windowHeight);
+        }
+    }
+
+    inline void ensureDepthBuffer() {
+        ensureFramebuffer();
+        const size_t pixelCount = static_cast<size_t>(frameBuffer.width) * frameBuffer.height;
+        if (depthBuffer.size() != pixelCount) {
+            depthBuffer.resize(pixelCount);
+        }
+    }
+
+    inline void clearDepthBuffer() {
+        ensureDepthBuffer();
+        std::fill(depthBuffer.begin(), depthBuffer.end(), infinity);
+    }
+
+    inline void writeDepthRect(int xMin, int xMax, int yMin, int yMax, const vecRGBA& color, double depth) {
+        if (xMin >= xMax || yMin >= yMax) return;
+        const vecRGBA shaded = color.clamped();
+        for (int y = yMin; y < yMax; ++y) {
+            const size_t row = static_cast<size_t>(y) * frameBuffer.width;
+            for (int x = xMin; x < xMax; ++x) {
+                const size_t index = row + static_cast<size_t>(x);
+                if (depth <= depthBuffer[index]) {
+                    depthBuffer[index] = depth;
+                    frameBuffer.accumulationBuffer[index] = shaded;
+                }
+            }
         }
     }
 
@@ -36,6 +58,23 @@ namespace RayCast {
                 frameBuffer.accumulationBuffer[row + x] = c;
             }
         }
+    }
+
+    inline void fillOpaqueRectDepth(float x1, float y1, float x2, float y2, const vecRGBA& color, double depth) {
+        const int xMin = std::max(0, static_cast<int>(std::floor(x1)));
+        const int xMax = std::min(frameBuffer.width, static_cast<int>(std::ceil(x2)));
+        const int yMin = std::max(0, static_cast<int>(std::floor(y1)));
+        const int yMax = std::min(frameBuffer.height, static_cast<int>(std::ceil(y2)));
+        writeDepthRect(xMin, xMax, yMin, yMax, color, depth);
+    }
+
+    inline void clampScreenY(double& y) {
+        y = std::clamp(y, 0.0, static_cast<double>(windowHeight));
+    }
+
+    inline int cappedVerticalScans(double ySpan) {
+        if (ySpan <= lineWidth) return 1;
+        return std::min(static_cast<int>(ySpan / lineWidth), windowHeight);
     }
 
     void presentFramebuffer() {
@@ -139,27 +178,52 @@ namespace RayCast {
             }
         }
 
-        if (horizonCenterY < windowHeight) {
-            const int yScans = static_cast<int>(std::ceil((windowHeight - horizonCenterY - 1) / lineWidth));
+        if (lvl.terrain.enabled) {
+            clearDepthBuffer();
+
+            const Texture& terrainTexture = textures[lvl.terrain.textureFile];
 
             #pragma omp parallel for schedule(static)
-            for (int y = 0; y < yScans; ++y) {
-                const double horizonRatio = halfWindowHeight / ((y + 1) * lineWidth);
-                for (int x = 0; x < numRays; ++x) {
-                    const double rayAngle = minRay + (x * rayStep);
-                    double floorRayLength = (Player::BASE_CAMERA_HEIGHT + pl.verticalOffset) * horizonRatio;
-                    floorRayLength /= std::cos(std::abs(rayAngle - pl.yaw));
-                    const double brightness = (viewDistance - floorRayLength) / viewDistance;
+            for (int x = 0; x < numRays; ++x) {
+                const double rayAngle = minRay + (x * rayStep);
+                const double cosineFactor = std::cos(std::abs(rayAngle - pl.yaw));
+                VoxelTerrain::renderColumn(
+                    x, rayAngle, cosineFactor,
+                    horizonCenterY, halfWindowHeight, viewDistance, lineWidth, windowHeight,
+                    lvl.terrain, terrainTexture, frameBuffer, depthBuffer, lvl.lightList);
+            }
+        } else if (horizonCenterY < windowHeight) {
+            clearDepthBuffer();
 
-                    const double worldX = pl.position.x + floorRayLength * std::cos(rayAngle);
-                    const double worldY = pl.position.y + floorRayLength * std::sin(rayAngle);
+            const double groundHeight = 0.0;
+            const double cameraHeight = pl.cameraHeight;
+
+            #pragma omp parallel for schedule(static)
+            for (int x = 0; x < numRays; ++x) {
+                const double rayAngle = minRay + (x * rayStep);
+                const double cosineFactor = std::cos(std::abs(rayAngle - pl.yaw));
+                const float x1 = static_cast<float>(x * lineWidth);
+                const float x2 = x1 + static_cast<float>(lineWidth);
+
+                double previousScreenY = static_cast<double>(windowHeight);
+                for (double distance = lineWidth; distance < viewDistance; distance += lineWidth) {
+                    const double worldX = pl.position.x + std::cos(rayAngle) * distance;
+                    const double worldY = pl.position.y + std::sin(rayAngle) * distance;
+                    const double screenY = FloorProjection::projectSurfaceScreenY(
+                        horizonCenterY, halfWindowHeight, cameraHeight,
+                        distance, groundHeight, cosineFactor);
+
+                    if (screenY < horizonCenterY || screenY >= previousScreenY) {
+                        continue;
+                    }
+
+                    const double brightness = std::clamp((viewDistance - distance) / viewDistance, 0.0, 1.0);
                     const vecRGBA color = applyLighting(
                         floorTexture.get(worldX, worldY),
-                        brightness, {worldX, worldY}, 0.0, lvl.lightList);
+                        brightness, {worldX, worldY}, groundHeight, lvl.lightList);
 
-                    const float x1 = x * lineWidth, x2 = (x + 1) * lineWidth;
-                    const float y1 = horizonCenterY + (y * lineWidth), y2 = y1 + lineWidth;
-                    fillOpaqueRect(x1, y1, x2, y2, color);
+                    fillOpaqueRectDepth(x1, static_cast<float>(screenY), x2, static_cast<float>(previousScreenY), color, distance);
+                    previousScreenY = screenY;
                 }
             }
         }
@@ -177,17 +241,16 @@ namespace RayCast {
 
         double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
         double floorZ = sect->baseHeight + sect->floatingHeight;
-        double zDistance = cameraZ - floorZ;
+        (void)cameraZ;
         vec2 sectorCenter = sect->outline.centerPoint();
 
         for (int y = 0; y < yScans; ++y) {
-            double screenY = yStart + (y + 0.5) * yScanLineSize;
-            double screenYFromHorizon = screenY - horizonCenterY;
+            const double screenY = yStart + (y + 0.5) * yScanLineSize;
+            const double rayLength = FloorProjection::trueDistanceFromScreenY(
+                horizonCenterY, halfWindowHeight, pl.cameraHeight,
+                screenY, floorZ, cosineFactor);
 
-            if (std::abs(screenYFromHorizon) < 1e-5) continue;
-
-            double rayLength = (zDistance * halfWindowHeight) / screenYFromHorizon;
-            rayLength /= cosineFactor;
+            if (!std::isfinite(rayLength)) continue;
 
             vec2 worldPos = {pl.position.x + rayLength * std::cos(rayAngle), pl.position.y + rayLength * std::sin(rayAngle)};
             vec2 worldCoord = worldPos;
@@ -206,7 +269,7 @@ namespace RayCast {
             if (y1 < 0) y1 = 0;
             if (y2 > windowHeight) y2 = windowHeight;
 
-            fillOpaqueRect(x1, y1, x2, y2, color);
+            fillOpaqueRectDepth(x1, y1, x2, y2, color, rayLength);
         }
     }
 
@@ -226,18 +289,16 @@ namespace RayCast {
         const double cameraZ = Player::BASE_CAMERA_HEIGHT + pl.verticalOffset;
         const double underSideZ = sect->floatingHeight;
         if (cameraZ >= underSideZ - 1e-5) return;
-
-        const double zDistance = underSideZ - cameraZ;
+        (void)cameraZ;
         const vec2 sectorCenter = sect->outline.centerPoint();
 
         for (int y = 0; y < yScans; ++y) {
             const double screenY = yHigh - (y + 0.5) * yScanLineSize;
-            const double screenYFromHorizon = horizonCenterY - screenY;
+            const double rayLength = FloorProjection::trueDistanceFromScreenY(
+                horizonCenterY, halfWindowHeight, pl.cameraHeight,
+                screenY, underSideZ, cosineFactor);
 
-            if (std::abs(screenYFromHorizon) < 1e-5) continue;
-
-            double rayLength = (zDistance * halfWindowHeight) / screenYFromHorizon;
-            rayLength /= cosineFactor;
+            if (!std::isfinite(rayLength)) continue;
 
             vec2 worldPos = {pl.position.x + rayLength * std::cos(rayAngle), pl.position.y + rayLength * std::sin(rayAngle)};
             vec2 worldCoord = worldPos;
@@ -257,7 +318,7 @@ namespace RayCast {
             if (y2 < 0) y2 = 0;
             if (y1 > windowHeight) y1 = windowHeight;
 
-            fillOpaqueRect(x1, y2, x2, y1, color);
+            fillOpaqueRectDepth(x1, y2, x2, y1, color, rayLength);
         }
     }
 
@@ -265,7 +326,7 @@ namespace RayCast {
         return pl.cameraHeight < sect.floatingHeight - 1e-5;
     }
 
-    void basicColumnFill(const Texture* fillTexture, double x1, double x2, double yTop, double yBottom, int textureXIndex, double brightness, const vec2& worldPos, double elevationBottom, double elevationTop, double textureScaleY = 1.0, bool invertTexureY = false, double textureBaseSize = Sector::defaultWallHeight) {
+    void basicColumnFill(const Texture* fillTexture, double x1, double x2, double yTop, double yBottom, int textureXIndex, double brightness, const vec2& worldPos, double elevationBottom, double elevationTop, double surfaceDepth, double textureScaleY = 1.0, bool invertTexureY = false, double textureBaseSize = Sector::defaultWallHeight) {
         (void)textureScaleY;
         (void)textureBaseSize;
 
@@ -283,7 +344,6 @@ namespace RayCast {
         const double invYSpan = 1.0 / ySpan;
         const vecRGBA lightBottom = computeLighting(worldPos, elevationBottom, lvl.lightList);
         const vecRGBA lightTop = computeLighting(worldPos, elevationTop, lvl.lightList);
-        const size_t rowWidth = static_cast<size_t>(frameBuffer.width);
 
         for (int y = yMin; y < yMax; ++y) {
             const double t = std::clamp(((y + 0.5) - yTop) * invYSpan, 0.0, 1.0);
@@ -292,10 +352,8 @@ namespace RayCast {
                 : texHeight - 1 - static_cast<int>(t * (texHeight - 1));
             const vecRGBA light = lightBottom * (1.0 - t) + lightTop * t;
             const vecRGBA color = (fillTexture->get(texX, texY) * brightness * light).clamped();
-            const size_t row = static_cast<size_t>(y) * rowWidth;
-            for (int x = xMin; x < xMax; ++x) {
-                frameBuffer.accumulationBuffer[row + x] = color;
-            }
+            fillOpaqueRectDepth(static_cast<float>(xMin), static_cast<float>(y),
+                static_cast<float>(xMax), static_cast<float>(y + 1), color, surfaceDepth);
         }
     }
 
@@ -466,15 +524,19 @@ namespace RayCast {
                             wallInfo.midWallTopY, wallInfo.midWallBottomY,
                             wallInfo.textureXIndex, brightness, wallWorldPos,
                             floorElevation, midWallTopElevation,
+                            obj.collInfo.rayLength,
                             workingWall.wallHeight / workingSector.defaultWallHeight);
                     }
-                    floorFill(&workingSector, rayAngle, cosineFactor, x,
-                        wallInfo.midWallBottomY, static_cast<double>(windowHeight) - 1.0);
+                    if (!VoxelTerrain::replacesSectorFloor(obj.parentIndex, lvl.terrain)) {
+                        floorFill(&workingSector, rayAngle, cosineFactor, x,
+                            wallInfo.midWallBottomY, static_cast<double>(windowHeight) - 1.0);
+                    }
                 } else {
                     basicColumnFill(&textures[workingWall.textureFile], x1, x2,
                         wallInfo.baseWallTopY, wallInfo.basewWallBottomY,
                         wallInfo.textureXIndex, brightness, wallWorldPos,
                         workingSector.floatingHeight, floorElevation,
+                        obj.collInfo.rayLength,
                         workingSector.baseHeight / workingSector.defaultWallHeight);
                     if (cameraBelowSector(workingSector) && wallInfo.basewWallBottomY < horizonCenterY) {
                         underSideFill(&workingSector, rayAngle, cosineFactor, x,
@@ -487,6 +549,7 @@ namespace RayCast {
                         wallInfo.midWallTopY, wallInfo.midWallBottomY,
                         wallInfo.textureXIndex, brightness, wallWorldPos,
                         floorElevation, midWallTopElevation,
+                        obj.collInfo.rayLength,
                         workingWall.wallHeight / workingSector.defaultWallHeight);
                 }
 
@@ -494,6 +557,7 @@ namespace RayCast {
                     wallInfo.baseWallTopY, wallInfo.basewWallBottomY,
                     wallInfo.textureXIndex, brightness, wallWorldPos,
                     workingSector.floatingHeight, floorElevation,
+                    obj.collInfo.rayLength,
                     workingSector.baseHeight / workingSector.defaultWallHeight);
 
                 if (cameraBelowSector(workingSector) && wallInfo.basewWallBottomY < horizonCenterY) {
@@ -517,6 +581,7 @@ namespace RayCast {
                         wallInfo.midWallTopY, wallInfo.midWallBottomY,
                         wallInfo.textureXIndex, brightness, wallWorldPos,
                         floorElevation, midWallTopElevation,
+                        obj.collInfo.rayLength,
                         workingWall.wallHeight / workingSector.defaultWallHeight);
                 }
 
@@ -526,7 +591,8 @@ namespace RayCast {
 
                     sectorFillMetadata pairWallInfo = sectorDataCalc(&workingSector, &workingWall,
                         pair.collInfo, pair.collInfo.rayLength * cosineFactor);
-                    if (pairWallInfo.midWallBottomY > horizonCenterY) {
+                    if (pairWallInfo.midWallBottomY > horizonCenterY
+                            && !VoxelTerrain::replacesSectorFloor(obj.parentIndex, lvl.terrain)) {
                         floorFill(&workingSector, rayAngle, cosineFactor, x,
                             wallInfo.baseWallTopY, pairWallInfo.baseWallTopY);
                     }

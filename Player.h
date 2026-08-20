@@ -3,6 +3,12 @@
 #include "globals.h"
 #include "level.h"
 #include "sector.h"
+#include "terrainSettings.h"
+
+namespace VoxelTerrain {
+    double sampleHeightAt(const vec2& worldPosition, const TerrainSettings& settings);
+    bool replacesSectorFloor(int sectorIndex, const TerrainSettings& settings);
+}
 
 using std::vector;
 using std::pair;
@@ -134,12 +140,15 @@ struct Player {
     }
 
     int findDominantSector() {
-        // Removed bestSectorIndex and highestZInRange as they relate to being *inside* the solid
-        double highestFloorBelow = -infinity; // Track highest floor *below* player
+        double highestFloorBelow = -infinity;
         int floorBelowIndex = -1;
+        constexpr double floorTolerance = 1e-4;
     
-        // Iterate through all sectors in the level
         for (int i = 0; i < lvl.sectorList.size(); ++i) {
+            if (VoxelTerrain::replacesSectorFloor(i, lvl.terrain)) {
+                continue;
+            }
+
             const Sector& sect = lvl.sectorList[i]; // Use const reference
             
             if (sect.outline.isInside_AABB(position)) {
@@ -149,8 +158,6 @@ struct Player {
                     // double sectorBottom = sect.floatingHeight; // No longer needed for this check
         
                     // Check if player is *at or above* this sector's floor
-                    // Use a small tolerance if needed for floating point comparisons near the floor
-                    constexpr double floorTolerance = 1e-4;
                     if (verticalOffset >= sectorTop - floorTolerance) {
                         // If this sector's top is higher than the highest floor found *below* (or at) the player so far
                         if (sectorTop > highestFloorBelow) {
@@ -160,6 +167,14 @@ struct Player {
                     }
                     // No need for the else-if checking inside the solid volume
                 }
+            }
+        }
+
+        if (lvl.terrain.enabled) {
+            const double terrainHeight = VoxelTerrain::sampleHeightAt(position, lvl.terrain);
+            if (verticalOffset >= terrainHeight - floorTolerance && terrainHeight > highestFloorBelow) {
+                highestFloorBelow = terrainHeight;
+                floorBelowIndex = -1;
             }
         }
     
@@ -181,7 +196,6 @@ struct Player {
         int sectorIndex = findDominantSector(); // Call the updated function
         double sectorFloorHeight = 0.0; // Default floor height to 0 (absolute ground)
 
-        // Check if a valid sector index was returned
         if (sectorIndex != -1) {
             // Get the sector using the potentially updated index
             const Sector& sect = lvl.sectorList[sectorIndex]; // Use const reference
@@ -209,6 +223,8 @@ struct Player {
                     position.orbit(sect.outline.centerPoint(), sect.lastFrame.rotationRads);
                 }  
             }
+        } else if (lvl.terrain.enabled) {
+            sectorFloorHeight = VoxelTerrain::sampleHeightAt(position, lvl.terrain);
         }
 
         std::vector<Sector> movingSectors;
