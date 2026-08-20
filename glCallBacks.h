@@ -6,33 +6,13 @@
 #include "perfOverlay.h"
 
 void onReshape(int width, int height) {
-    int targetWidth = width;
-    int targetHeight = (targetWidth * 9) / 16;
+    applyClientSize(width, height);
 
-    if (targetHeight > height) {
-        targetHeight = height;
-        targetWidth = (targetHeight * 16) / 9;
-    }
-
-    targetWidth -= targetWidth % 16;
-    targetHeight = (targetWidth / 16) * 9;
-
-    windowWidth = targetWidth;
-    windowHeight = targetHeight;
-    halfWindowWidth = windowWidth / 2;
-    halfWindowHeight = windowHeight / 2;
-
-    numRays = windowWidth / 4;
-    veritcalRays = (windowWidth / 16) * 9;
-
-    int viewportX = (width - targetWidth) / 2;
-    int viewportY = (height - targetHeight) / 2;
-
-    glViewport(viewportX, viewportY, targetWidth, targetHeight);
+    glViewport(0, 0, clientWidth, clientHeight);
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(0, targetWidth, targetHeight, 0, -1, 1);
+    glOrtho(0, clientWidth, clientHeight, 0, -1, 1);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -84,7 +64,7 @@ void acquireMouse(SDL_Window* window) {
         currentGameState = GAMESTATES::GAME_PLAY;
     }
     SDL_ShowCursor(SDL_DISABLE);
-    SDL_WarpMouseInWindow(window, halfWindowWidth, halfWindowHeight);
+    SDL_WarpMouseInWindow(window, halfClientWidth, halfClientHeight);
 }
 
 void mouseButtonDown(SDL_Window* window) {
@@ -102,8 +82,8 @@ void mouseMotion(int x, int y, SDL_Window* window) {
             return;
         }
 
-        int centerX = halfWindowWidth;
-        int centerY = halfWindowHeight;
+        int centerX = halfClientWidth;
+        int centerY = halfClientHeight;
 
         if (firstMouse) {
             if (x != centerX || y != centerY) {

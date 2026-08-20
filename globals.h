@@ -27,6 +27,7 @@
 #include "vecSys/line2.h"
 #include "vecSys/vecRGBA.h"
 #include "vecSys/frameBuffer.h"
+#include "displayConfig.h"
 
 using namespace vecSys;
 
@@ -40,8 +41,42 @@ using std::string;
 
 int xyIndextoscalarIndex(const int& xval, const int& yval, int maxX = 256) { return (yval * maxX) + xval; }
 
-int windowWidth = 1024, windowHeight = 576, halfWindowWidth = windowWidth / 2, halfWindowHeight = windowHeight / 2;
-int numRays = 256, veritcalRays = (numRays*9)/16;
+// CPU render resolution (fixed from DisplayConfig unless snapshot overrides via applyRenderSize).
+int windowWidth = DisplayConfig::defaultWidth;
+int windowHeight = DisplayConfig::defaultHeight;
+int halfWindowWidth = windowWidth / 2;
+int halfWindowHeight = windowHeight / 2;
+int numRays = windowWidth / 4;
+int veritcalRays = (windowWidth / 16) * 9;
+
+// SDL client area and scaled presentation rect within it.
+int clientWidth = DisplayConfig::defaultWidth;
+int clientHeight = DisplayConfig::defaultHeight;
+int halfClientWidth = clientWidth / 2;
+int halfClientHeight = clientHeight / 2;
+int presentX = 0;
+int presentY = 0;
+int presentWidth = clientWidth;
+int presentHeight = clientHeight;
+
+inline void applyRenderSize(int width, int height) {
+    windowWidth = width;
+    windowHeight = height;
+    halfWindowWidth = windowWidth / 2;
+    halfWindowHeight = windowHeight / 2;
+    numRays = windowWidth / 4;
+    veritcalRays = (windowWidth / 16) * 9;
+}
+
+inline void applyClientSize(int width, int height) {
+    clientWidth = width;
+    clientHeight = height;
+    halfClientWidth = clientWidth / 2;
+    halfClientHeight = clientHeight / 2;
+    DisplayConfig::fitPresentationRect(
+        clientWidth, clientHeight, windowWidth, windowHeight,
+        presentX, presentY, presentWidth, presentHeight);
+}
 bool keyFlags[256] = {false};
 double fovH = 75*pi/180.0;
 double frameDeltaSeconds = 1.0 / 120.0;

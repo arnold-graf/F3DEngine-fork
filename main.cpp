@@ -30,12 +30,7 @@ namespace {
     }
 
     int runSnapshot(const std::string& outputPath, const std::string& levelPath) {
-        windowWidth = 1024;
-        windowHeight = 576;
-        halfWindowWidth = windowWidth / 2;
-        halfWindowHeight = windowHeight / 2;
-        numRays = windowWidth / 4;
-        veritcalRays = (windowWidth / 16) * 9;
+        applyRenderSize(DisplayConfig::defaultWidth, DisplayConfig::defaultHeight);
 
         loadTextures("./gameDef/textures.json");
         loadGameLevel(levelPath);
@@ -121,7 +116,7 @@ int main(int argc, char* argv[]) {
     onReshape(windowWidth, windowHeight);
 
     SDL_ShowCursor(SDL_DISABLE);
-    SDL_WarpMouseInWindow(window, halfWindowWidth, halfWindowHeight);
+    SDL_WarpMouseInWindow(window, halfClientWidth, halfClientHeight);
 
     bool running = true;
     SDL_Event event;

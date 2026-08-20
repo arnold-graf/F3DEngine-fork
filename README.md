@@ -16,6 +16,7 @@ and ceilings, skyboxes, and billboards.
 - **Skybox** — scrolling night-sky texture above the horizon, tied to player yaw.
 - **Billboards** — vertical sprite-like surfaces (structure in place; sample level uses sectors only).
 - **Multi-threaded draw prep** — sky and floor quad generation runs across CPU threads (`std::thread`; OpenMP is included for other uses).
+- **Fixed render resolution** — CPU rendering runs at the size set in `displayConfig.h` (`defaultWidth` / `defaultHeight`). The SDL window can be resized or fullscreened independently; OpenGL upscales the framebuffer to fit (letterboxed to preserve aspect ratio).
 
 ### World model
 

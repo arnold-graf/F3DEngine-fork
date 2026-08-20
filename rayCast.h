@@ -112,16 +112,16 @@ namespace RayCast {
 
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        glOrtho(0, windowWidth, windowHeight, 0, -1, 1);
+        glOrtho(0, clientWidth, clientHeight, 0, -1, 1);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
         glColor3f(1.0f, 1.0f, 1.0f);
         glBegin(GL_QUADS);
-        glTexCoord2f(0.0f, 0.0f); glVertex2f(0.0f, 0.0f);
-        glTexCoord2f(1.0f, 0.0f); glVertex2f(static_cast<float>(windowWidth), 0.0f);
-        glTexCoord2f(1.0f, 1.0f); glVertex2f(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
-        glTexCoord2f(0.0f, 1.0f); glVertex2f(0.0f, static_cast<float>(windowHeight));
+        glTexCoord2f(0.0f, 0.0f); glVertex2f(static_cast<float>(presentX), static_cast<float>(presentY));
+        glTexCoord2f(1.0f, 0.0f); glVertex2f(static_cast<float>(presentX + presentWidth), static_cast<float>(presentY));
+        glTexCoord2f(1.0f, 1.0f); glVertex2f(static_cast<float>(presentX + presentWidth), static_cast<float>(presentY + presentHeight));
+        glTexCoord2f(0.0f, 1.0f); glVertex2f(static_cast<float>(presentX), static_cast<float>(presentY + presentHeight));
         glEnd();
         glDisable(GL_TEXTURE_2D);
     }
